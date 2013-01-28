@@ -50,9 +50,12 @@ module CloudPrint
 
       request = case method
                   when :multipart
-                    req = Net::HTTP::Post.new(uri.request_uri)
-                    # Convert hash keys to strings, because that's what Net::HTTPGenericRequest#encode_multipart_form_data assumes they are
-                    req.set_form(options[:params].inject({}) {|memo, (k,v)| memo[k.to_s] = v; memo }, 'multipart/form-data')
+                    require 'net/http/post/multipart'
+                    req = Net::HTTP::Post::Multipart.new(
+                      uri.request_uri,
+                      "content" => UploadIO.new(options[:params][:content], options[:params][:contentType], options[:params][:title]),
+                      "contentType" => options[:params][:contentType],
+                      "printerid" => options[:params][:printerid])
                     req
                   when :post
                     req = Net::HTTP::Post.new(uri.request_uri)

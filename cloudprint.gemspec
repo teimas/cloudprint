@@ -17,6 +17,7 @@ DESC
 
   s.add_dependency 'oauth2', '~> 0.8.0'
   s.add_dependency 'json'
+  s.add_dependency 'multipart-post'
 
   s.add_development_dependency 'mocha'
   s.add_development_dependency 'rake'
