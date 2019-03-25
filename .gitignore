@@ -1,4 +1,7 @@
 *.gem
 .bundle
+.idea
+Gemfile.lock
 pkg/*
 tags
+vendor/

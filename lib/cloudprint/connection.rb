@@ -4,6 +4,11 @@ require "uri"
 
 module CloudPrint
   class Connection
+
+    def initialize client
+      @client = client
+    end
+
     def get(path, params = {})
       response = request(:get, path, params)
       parse_response(response)
@@ -32,7 +37,7 @@ module CloudPrint
 
     def request(method, path, params)
       url = full_url_for(path)
-      response = make_http_request(:method => method, :url => url, :params => params)
+      make_http_request(:method => method, :url => url, :params => params)
     end
 
     def make_http_request(options = {})
@@ -50,19 +55,16 @@ module CloudPrint
 
       request = case method
                   when :multipart
-                    require 'net/http/post/multipart'
-                    req = Net::HTTP::Post::Multipart.new(
-                      uri.request_uri,
-                      "content" => UploadIO.new(options[:params][:content], options[:params][:contentType], options[:params][:title]),
-                      "contentType" => options[:params][:contentType],
-                      "printerid" => options[:params][:printerid])
+                    req = Net::HTTP::Post.new(uri.request_uri)
+                    # Convert hash keys to strings, because that's what Net::HTTPGenericRequest#encode_multipart_form_data assumes they are
+                    req.set_form(options[:params].inject({}) {|memo, (k,v)| memo[k.to_s] = v; memo }, 'multipart/form-data')
                     req
                   when :post
                     req = Net::HTTP::Post.new(uri.request_uri)
                     req.set_form_data(options[:params])
                     req
                   else
-                    req = Net::HTTP::Get.new(build_get_uri(uri.request_uri, options[:params]))
+                    req = Net::HTTP::Get.new(build_get_uri(uri, options[:params]))
                 end
 
       set_request_headers(request)
@@ -70,16 +72,14 @@ module CloudPrint
     end
 
     def set_request_headers(request)
-      request['Authorization'] = "OAuth " + CloudPrint.access_token
+      request['Authorization'] = "OAuth " + @client.access_token
       request['X-CloudPrint-Proxy'] = 'api-prober'
     end
 
     def build_get_uri(uri, params = {})
-      unescaped_params = params.map { |key,val| "#{key}=#{val}"}.join("&")
-      escaped_params = URI.escape(unescaped_params)
-
-      escaped_params = "?#{escaped_params}" unless escaped_params.empty?
-      uri + escaped_params
+      uri = uri.dup
+      uri.query = params.any? ? URI.encode_www_form(params) : nil
+      uri.request_uri
     end
 
     def build_http_connection(uri)

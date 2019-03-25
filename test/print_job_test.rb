@@ -1,30 +1,29 @@
 require 'helper'
 
-class PrintJobTest < Test::Unit::TestCase
+class PrintJobTest < Minitest::Test
   def setup
     # TODO: Is it necessary to pass a fake token to #setup?
-    CloudPrint.setup(:refresh_token => 'refresh_token')
+    @client = new_client
     stub_connection
   end
 
-  should "find a job" do
-    fake_connection.stubs(:get).with('/jobs').returns(jobs_response)
-    assert CloudPrint::PrintJob.find('job_id').is_a?(CloudPrint::PrintJob)
+  should 'find a job' do
+    fake_connection.expects(:post).with('/job', {:jobid => "job_id"}).returns(real_job_hash)
+    assert @client.print_jobs.find('job_id').is_a?(CloudPrint::PrintJob)
   end
 
   should 'perform a remote request when finding a job' do
-    fake_connection.expects(:get).with('/jobs').returns({})
-
-    CloudPrint::PrintJob.find('job_id')
+    fake_connection.expects(:post).with('/job', {:jobid => "job_id"}).returns(real_job_hash)
+    @client.print_jobs.find('job_id')
   end
 
   should 'gets the job details' do
-    fake_connection.stubs(:get).with('/jobs').returns(jobs_response)
-    job = CloudPrint::PrintJob.find('job_id')
+    fake_connection.expects(:post).with('/job', {:jobid => "job_id"}).returns(real_job_hash)
+    job = @client.print_jobs.find('job_id')
 
     assert_equal 'job_id', job.id
-    assert_equal 'status', job.status
-    assert_equal 'Error', job.error_code
+    assert_equal 'mocked_status', job.status
+    assert_equal '', job.error_code
     assert_equal 'printer_id', job.printer_id
     assert_equal 'Job Title', job.title
     assert_equal 'image/jpeg', job.content_type
@@ -37,7 +36,7 @@ class PrintJobTest < Test::Unit::TestCase
   end
 
   should 'recognize a job as queued' do
-    job = CloudPrint::PrintJob.new(:status => "QUEUED")
+    job = @client.print_jobs.new(:status => "QUEUED")
 
     assert !job.done?
     assert !job.in_progress?
@@ -48,7 +47,7 @@ class PrintJobTest < Test::Unit::TestCase
   end
 
   should 'recognize a job as in progress' do
-    job = CloudPrint::PrintJob.new(:status => "IN_PROGRESS")
+    job = @client.print_jobs.new(:status => "IN_PROGRESS")
 
     assert !job.done?
     assert !job.queued?
@@ -59,7 +58,7 @@ class PrintJobTest < Test::Unit::TestCase
   end
 
   should 'recognize a job as done' do
-    job = CloudPrint::PrintJob.new(:status => "DONE")
+    job = @client.print_jobs.new(:status => "DONE")
 
     assert !job.in_progress?
     assert !job.queued?
@@ -70,7 +69,7 @@ class PrintJobTest < Test::Unit::TestCase
   end
 
   should "recognize a job has an error" do
-    job = CloudPrint::PrintJob.new(:status => "ERROR")
+    job = @client.print_jobs.new(:status => "ERROR")
 
     assert !job.done?
     assert !job.in_progress?
@@ -81,7 +80,7 @@ class PrintJobTest < Test::Unit::TestCase
   end
 
   should "recognize a job as submitted" do
-    job = CloudPrint::PrintJob.new(:status => "SUBMITTED")
+    job = @client.print_jobs.new(:status => "SUBMITTED")
 
     assert !job.done?
     assert !job.in_progress?
@@ -92,8 +91,8 @@ class PrintJobTest < Test::Unit::TestCase
   end
 
   should "refresh a job" do
-    job = CloudPrint::PrintJob.new(:id => "job_id", :status => "IN_PROGRESS")
-    CloudPrint::PrintJob.stubs(:find_by_id).returns({"id" => "job_id", "status" => "DONE", "errorCode" => "42"})
+    job = @client.print_jobs.new(:id => "job_id", :status => "IN_PROGRESS")
+    @client.print_jobs.stubs(:find_by_id).returns({"id" => "job_id", "status" => "DONE", "errorCode" => "42"})
 
     assert_equal job, job.refresh!
 
@@ -103,7 +102,7 @@ class PrintJobTest < Test::Unit::TestCase
 
   should "return all jobs" do
     fake_connection.stubs(:get).with('/jobs').returns(jobs_response)
-    jobs = CloudPrint::PrintJob.all
+    jobs = @client.print_jobs.all
 
     assert jobs[0].id == 'other_job'
     assert jobs[1].id == 'job_id'
@@ -113,20 +112,20 @@ class PrintJobTest < Test::Unit::TestCase
     should "return true on success" do
       fake_connection.stubs(:get).with('/deletejob', { :jobid => 'job_id' }).returns({ 'success' => true })
 
-      assert CloudPrint::PrintJob.new(:id => 'job_id').delete!
+      assert @client.print_jobs.new(:id => 'job_id').delete!
     end
 
     should "perform a remote request" do
       fake_connection.expects(:get).with('/deletejob', { :jobid => 'job_id' }).returns({ 'success' => true })
 
-      CloudPrint::PrintJob.new(:id => 'job_id').delete!
+      @client.print_jobs.new(:id => 'job_id').delete!
     end
 
     should "raise a RequestError on failure" do
       fake_connection.stubs(:get).with('/deletejob', { :jobid => 'job_id' }).returns({ 'success' => false, 'message' => 'This is an error', 'errorCode' => '123' })
 
-      assert_raise(CloudPrint::RequestError, 'This is an error') do
-        CloudPrint::PrintJob.new(:id => 'job_id').delete!
+      assert_raises(CloudPrint::RequestError, 'This is an error') do
+        @client.print_jobs.new(:id => 'job_id').delete!
       end
     end
   end
@@ -152,6 +151,56 @@ class PrintJobTest < Test::Unit::TestCase
           "tags" => ["^own"]
         }
       ]
+    }
+  end
+
+  def real_job_hash
+    {
+      "success" => true,
+      "request" => {
+        "time" => "0",
+        "params" => {
+          "jobid" => [
+            "job_id"
+          ]
+        },
+        "user" => "santa@claus.com",
+        "users" => [
+          "santa@claus.com"
+        ]
+      },
+      "xsrf_token" => "AIp06DiNzjnfseYdqxujmG5P5oDpPh3N_A:1465433435813",
+      "job" => {
+        "ticketUrl" => "https://www.google.com/cloudprint/ticket?jobid=job_id",
+        "printerType" => "GOOGLE",
+        "printerName" => "Brother HL-L2380DW series",
+        "errorCode" => "",
+        "updateTime" => "1349722237676",
+        "title" => "Job Title",
+        "message" => "A message.",
+        "ownerId" => "santa@claus.com",
+        "tags" => [
+          "^own"
+        ],
+        "uiState" => {
+          "summary" => "DONE"
+        },
+        "numberOfPages" => 1,
+        "createTime" => "1349722237676",
+        "semanticState" => {
+          "delivery_attempts" => 1,
+          "state" => {
+            "type" => "DONE"
+          },
+          "version" => "1.0"
+        },
+        "printerid" => "printer_id",
+        "fileUrl" => "https://www.google.com/cloudprint/download?id=job_id",
+        "id" => "job_id",
+        "rasterUrl" => "https://www.google.com/cloudprint/download?id\u003db8fa1266-625b-070c-5968-5039d2fdb982\u0026forcepwg\u003d1",
+        "contentType" => "image/jpeg",
+        "status" => "mocked_status"
+      }
     }
   end
 end

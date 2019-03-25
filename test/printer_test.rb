@@ -1,48 +1,48 @@
-require "helper"
-class PrinterTest < Test::Unit::TestCase
+require 'helper'
+
+class PrinterTest < Minitest::Test
   def setup
-    # TODO: Is it necessary to pass a fake token to #setup?
-    CloudPrint.setup(:refresh_token => 'refresh_token')
+    @client = new_client
   end
 
   should "initialize a printer" do
-    printer = CloudPrint::Printer.new(:id => 'printer_id', :status => 'online', :name => "My Printer")
+    printer = @client.printers.new(:id => 'printer_id', :status => 'online', :name => "My Printer")
     assert_equal 'printer_id', printer.id
     assert_equal 'online', printer.status
     assert_equal 'My Printer', printer.name
   end
 
   should "have tags" do
-    printer = CloudPrint::Printer.new(:id => 'printer_id', :status => 'online', :name => "My Printer")
+    printer = @client.printers.new(:id => 'printer_id', :status => 'online', :name => "My Printer")
     assert_equal printer.tags, {}
 
-    printer = CloudPrint::Printer.new(:id => 'printer_id', :status => 'online', :name => "My Printer", :tags => {"email" => 'a@b.com'})
+    printer = @client.printers.new(:id => 'printer_id', :status => 'online', :name => "My Printer", :tags => {"email" => 'a@b.com'})
     assert_equal printer.tags, {"email" => "a@b.com"}
   end
 
   should "get a connection when finding a printer by its id" do
     fake_connection.stubs(:get).returns(one_printer_hash)
 
-    CloudPrint.expects(:connection).returns(fake_connection)
-    CloudPrint::Printer.find('printer')
+    @client.expects(:connection).returns(fake_connection)
+    @client.printers.find('printer')
   end
 
   should "call a remote request when finding a printer by its id" do
     fake_connection.expects(:get).returns(one_printer_hash)
     stub_connection
-    CloudPrint::Printer.find('printer')
+    @client.printers.find('printer')
   end
 
   should "call a remote request with the proper params when finding a printer" do
     fake_connection.expects(:get).with('/printer', :printerid => 'printer', :printer_connection_status => true).returns(one_printer_hash)
     stub_connection
-    CloudPrint::Printer.find('printer')
+    @client.printers.find('printer')
   end
 
   should "initialize a new object when finding a printer" do
     fake_connection.stubs(:get).returns(one_printer_hash)
     stub_connection
-    printer = CloudPrint::Printer.find('my_printer')
+    printer = @client.printers.find('my_printer')
     assert_equal 'my_printer', printer.id
     assert_equal 'online', printer.status
     assert_equal 'My Printer', printer.name
@@ -52,7 +52,7 @@ class PrinterTest < Test::Unit::TestCase
   should "initialize an array of printers when finding all printers" do
     fake_connection.stubs(:get).returns(multiple_printer_hash)
     stub_connection
-    printers = CloudPrint::Printer.all
+    printers = @client.printers.all
     first_printer = printers[0]
     second_printer  = printers[1]
     assert_equal 'first_printer', first_printer.id
@@ -87,12 +87,31 @@ class PrinterTest < Test::Unit::TestCase
     assert_nil job
   end
 
-
   should "print file" do
     fake_connection.expects(:multipart_post).with('/submit', connection_print_file_params).returns(empty_job)
     stub_connection
 
     print_file
+  end
+
+  should "print stringio" do
+    stringio = StringIO.new(ruby_png_fixture.read)
+
+    fake_connection.expects(:multipart_post).with('/submit', connection_print_file_params.merge(:content => stringio)).returns(empty_job)
+    stub_connection
+
+    printer = @client.printers.new(:id => 'printer')
+    printer.print(print_file_params.merge(:content => stringio))
+  end
+
+  should "print tempfile" do
+    Tempfile.open "cloundprint_test" do |tempfile|
+      fake_connection.expects(:multipart_post).with('/submit', connection_print_file_params.merge(:content => tempfile)).returns(empty_job)
+      stub_connection
+
+      printer = @client.printers.new(:id => 'printer')
+      printer.print(print_file_params.merge(:content => tempfile))
+    end
   end
 
   should "print jobs returning an id and a status" do
@@ -106,7 +125,7 @@ class PrinterTest < Test::Unit::TestCase
 
   %w{ONLINE UNKNOWN OFFLINE DORMANT}.each do |status|
     should "recognize a printer as #{status.downcase}" do
-      printer = CloudPrint::Printer.new(:connection_status => status)
+      printer = @client.printers.new(:connection_status => status)
 
       assert printer.send(status.downcase + '?')
 
@@ -119,13 +138,13 @@ class PrinterTest < Test::Unit::TestCase
       should "scope search by connection status '#{status}'" do
         stub_connection
         fake_connection.expects(:get).with('/search', { :q => 'query', :connection_status => status.upcase }).returns(one_printer_hash)
-        CloudPrint::Printer.send("search_#{status.downcase}", 'query')
+        @client.printers.send("search_#{status.downcase}", 'query')
       end
 
       should "return array of Printers" do
         stub_connection
         fake_connection.stubs(:get).with('/search', { :connection_status => status }).returns(one_printer_hash)
-        printers = CloudPrint::Printer.send("search_#{status.downcase}")
+        printers = @client.printers.send("search_#{status.downcase}")
         assert_equal 'my_printer', printers[0].id
       end
     end
@@ -134,22 +153,22 @@ class PrinterTest < Test::Unit::TestCase
   context '.search_all' do
     setup { stub_connection }
 
-    should "scope search by printers with any connection status" do
-      fake_connection.expects(:get).with('/search', { :q => 'query', :connection_status => 'ALL' }).returns(one_printer_hash)
-      CloudPrint::Printer.search_all 'query'
+    should "search printers regardless of connection status" do
+      fake_connection.expects(:get).with('/search', { :q => 'query' }).returns(one_printer_hash)
+      @client.printers.search_all 'query'
     end
 
     should "return array of Printers" do
-      fake_connection.stubs(:get).with('/search', { :connection_status => 'ALL' }).returns(one_printer_hash)
-      printers = CloudPrint::Printer.search_all
+      fake_connection.stubs(:get).with('/search', {}).returns(one_printer_hash)
+      printers = @client.printers.search_all
       assert_equal 'my_printer', printers[0].id
     end
   end
 
   context '.all' do
-    should 'call .search_all' do
-      CloudPrint::Printer.expects(:search_all)
-      CloudPrint::Printer.all
+    should 'call .search with no query' do
+      @client.printers.expects(:search)
+      @client.printers.all
     end
   end
 
@@ -160,11 +179,11 @@ class PrinterTest < Test::Unit::TestCase
     end
 
     should "not scope printer search by connection status" do
-      CloudPrint::Printer.search 'query'
+      @client.printers.search 'query'
     end
 
     should "return array of Printers" do
-      printers = CloudPrint::Printer.search 'query'
+      printers = @client.printers.search 'query'
       assert_equal 'my_printer', printers[0].id
     end
   end
@@ -176,29 +195,29 @@ class PrinterTest < Test::Unit::TestCase
   end
 
   def print_stuff
-    printer = CloudPrint::Printer.new(:id => 'printer')
+    printer = @client.printers.new(:id => 'printer')
     printer.print(print_params)
   end
 
   def print_params
-     { :title => "Hello World", :content => "<h1>ohai!</h1>", :content_type => "text/html" }
+     { :title => "Hello World", :content => "<h1>ohai!</h1>", :content_type => "text/html", :ticket => ticket_hash }
   end
 
   def connection_print_params
-    { :printerid => 'printer', :title => "Hello World", :content => "<h1>ohai!</h1>", :contentType => "text/html" }
+    { :printerid => 'printer', :title => "Hello World", :content => "<h1>ohai!</h1>", :contentType => "text/html", :ticket => ticket_hash.to_json }
   end
 
   def print_file
-    printer = CloudPrint::Printer.new(:id => 'printer')
+    printer = @client.printers.new(:id => 'printer')
     printer.print(print_file_params)
   end
 
   def print_file_params
-    { :title => "Ruby!", :content => ruby_png_fixture, :content_type => "image/png" }
+    { :title => "Ruby!", :content => ruby_png_fixture, :content_type => "image/png", :ticket => ticket_hash }
   end
 
   def connection_print_file_params
-    { :printerid => 'printer', :title => "Ruby!", :content => ruby_png_fixture, :contentType => "image/png" }
+    { :printerid => 'printer', :title => "Ruby!", :content => ruby_png_fixture, :contentType => "image/png", :ticket => ticket_hash.to_json }
   end
 
   def one_printer_hash
@@ -210,6 +229,20 @@ class PrinterTest < Test::Unit::TestCase
         {'id' => 'first_printer',  'status' => 'online', 'name' => "First Printer", 'displayName' => 'First Printer (display name)', 'description' => 'First printer description'},
         {'id' => 'second_printer', 'status' => 'online', 'name' => "Second Printer", 'displayName' => 'Second Printer (display name)', 'description' => 'Second printer description'}
     ]}
+  end
+
+  def ticket_hash
+    { 'version' => '1.0',
+      'print' => {
+        'vendor_ticket_item' => [
+          {'id' => 'PageRegion', 'value' => "Letter"},
+          {'id' => 'BRMediaType', 'value' => 'Plain'},
+          {'id' => 'InputSlot', 'value' => 'Tray1'}
+        ],
+        'page_orientation' => {'type' => 2},
+        'fit_to_page' => {'type' => 3}
+      }
+    }
   end
 
   def ruby_png_fixture

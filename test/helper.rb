@@ -1,9 +1,14 @@
 require 'cloudprint'
-require 'test/unit'
+require 'minitest/autorun'
 require 'shoulda/context'
-require 'mocha'
+require 'mocha/mini_test'
 
-class Test::Unit::TestCase
+class Minitest::Test
+
+  def new_client
+    CloudPrint::Client.new(refresh_token: "refresh_token")
+  end
+
   def any_connection
     CloudPrint::Connection.any_instance
   end
@@ -24,9 +29,14 @@ class Test::Unit::TestCase
     mock
   end
 
+  def mock_refresh_token
+    mock = mock("refresh_token")
+    mock.stubs(refresh_token: "random_refresh_token")
+    mock
+  end
+
   def stub_http
     mock = mock_http()
-
     Net::HTTP.stubs(:new).returns(mock)
   end
 
@@ -45,7 +55,7 @@ class Test::Unit::TestCase
   end
 
   def stub_oauth_client
-    CloudPrint.stubs(:oauth_client).returns(mock_oauth_client)
+    CloudPrint::Client.any_instance.stubs(:oauth_client).returns(mock_oauth_client)
   end
 
   def fake_connection
@@ -53,11 +63,28 @@ class Test::Unit::TestCase
   end
 
   def stub_connection
-    CloudPrint.stubs(:connection).returns(fake_connection)
+    CloudPrint::Client.any_instance.stubs(:connection).returns(fake_connection)
     @connection.stub_everything
   end
 
   def fixture_file(filename)
     File.join(File.dirname(__FILE__), 'fixtures', filename)
+  end
+
+  # Adapted from minitest's assert_raises
+  def assert_nothing_raised(msg = nil)
+    begin
+      yield
+      pass # count assertion
+    rescue Minitest::Skip, Minitest::Assertion
+      # don't count assertion
+      raise
+    rescue SignalException, SystemExit
+      raise
+    rescue Exception => e
+      flunk proc {
+        exception_details(e, "#{e} exception not expected")
+      }
+    end
   end
 end

@@ -1,8 +1,9 @@
-require "helper"
+require 'helper'
 
-class ConnectionTest < Test::Unit::TestCase
+class ConnectionTest < Minitest::Test
   def setup
-    @connection = CloudPrint::Connection.new
+    stub_access_token
+    @connection = new_client.connection
   end
 
   should "get using a connection" do
@@ -58,7 +59,7 @@ class ConnectionTest < Test::Unit::TestCase
     stub
 
     params = { :text => 'ohai world' }
-    Net::HTTP::Get.expects(:new).with("/cloudprint/submit?text=ohai%20world").returns(mock_http)
+    Net::HTTP::Get.expects(:new).with("/cloudprint/submit?text=ohai+world").returns(mock_http)
     @connection.get('/submit', params)
   end
 
@@ -66,7 +67,6 @@ class ConnectionTest < Test::Unit::TestCase
     stub
     @connection.stubs(:build_http_connection).returns(mock_http)
 
-    CloudPrint.expects(:access_token).returns('token')
     @connection.get('/submit')
   end
 
