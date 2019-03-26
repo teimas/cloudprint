@@ -19,12 +19,20 @@ module CloudPrint
 
     def print(options)
       content = options[:content]
-      method = content.is_a?(IO) || content.is_a?(StringIO) || content.is_a?(Tempfile) ? :multipart_post : :post
+      method = (options[:content_type] == "application/pdf" ? :multipart_post : :post)
+      if method == :multipart_post
+        content_stream =  Base64.encode64(content)
+        contentTransferEncoding = 'base64'
+      else
+        content_stream = content
+        contentTransferEncoding = nil
+      end
       params = {
         printerid: self.id,
         title: options[:title],
-        content: options[:content],
-        contentType: options[:content_type]
+        content: content_stream,
+        contentType: options[:content_type],
+        contentTransferEncoding: contentTransferEncoding
       }
       params[:ticket] = options[:ticket].to_json if options[:ticket] && options[:ticket] != ''
       response = client.connection.send(method, '/submit', params) || {}
